@@ -1,0 +1,51 @@
+<!DOCTYPE TITAN_GUI_project_file>
+<Project TITAN_version="1.8.pre0 build 3" >
+    <General>
+        <Project_Name>LDAPasp_demo</Project_Name>
+        <Executable_Path>LDAPasp_demo</Executable_Path>
+        <Working_Dir>.</Working_Dir>
+        <Build_Host>alpha</Build_Host>
+        <Execution_Mode>Single</Execution_Mode>
+        <Log_Format>yes</Log_Format>
+        <GNU_Make>yes</GNU_Make>
+        <Update_Symlinks>yes</Update_Symlinks>
+        <Create_Absolute_Symlinks>no</Create_Absolute_Symlinks>
+        <Update_Makefile>yes</Update_Makefile>
+        <Localhost_Execute>yes</Localhost_Execute>
+        <Execute_Command>rsh %host &quot;cd %project_working_dir ; &quot;%executable&quot; %localhost %mctr_port&quot;</Execute_Command>
+        <Execute_Hosts>alfa, beta, gamma</Execute_Hosts>
+        <UnUsed_List></UnUsed_List>
+    </General>
+    <Modules>
+        <Module>LDAPasp_RFC4511_PortType.ttcn</Module>
+        <Module>LDAPasp_RFC4511_Types.ttcn</Module>
+        <Module>LDAPtest.ttcn</Module>
+        <Module>LDIF_RFC4511.ttcn</Module>
+        <Module>Lightweight_Directory_Access_Protocol.asn</Module>
+        <Module>TCCEncoding_Functions.ttcn</Module>
+    </Modules>
+    <TestPorts>
+        <TestPort>LDAPasp_RFC4511_PT.cc</TestPort>
+        <TestPort>LDAPasp_RFC4511_PT.hh</TestPort>
+    </TestPorts>
+    <Other_Sources>
+        <Other_Source>Abstract_Socket.cc</Other_Source>
+        <Other_Source>Abstract_Socket.hh</Other_Source>
+        <Other_Source>ldif.tab.cc</Other_Source>
+        <Other_Source>ldif.tab.hh</Other_Source>
+        <Other_Source>lex.ldif.cc</Other_Source>
+        <Other_Source>TCCEncoding.cc</Other_Source>
+    </Other_Sources>
+    <Configs>
+        <Config>client.cfg</Config>
+        <Config>server.cfg</Config>
+    </Configs>
+    <Test_Cases>
+        <Test_Case>LDAPtest.tc1</Test_Case>
+        <Test_Case>LDAPtest.tc2</Test_Case>
+    </Test_Cases>
+    <Others>
+        <Other>test1.ldif</Other>
+    </Others>
+    <File_Group name="MainFileGroup" />
+</Project>

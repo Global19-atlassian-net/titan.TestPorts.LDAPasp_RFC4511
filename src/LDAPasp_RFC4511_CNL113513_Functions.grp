@@ -1,0 +1,35 @@
+<!--
+/******************************************************************************
+* Copyright (c) 2006, 2015  Ericsson AB
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+* Gergely Futo
+* Attila Balasko
+* Csaba Feher
+* Csaba Fehér
+* Gabor Szalai
+* Janos Kovesdi
+* Szabolcs Balazs Beres
+* Szabolcs Béres
+* Zoltan Medve
+******************************************************************************/
+//
+//  File:               LDAPasp_RFC4511_CNL113513_Functions.grp
+//  Description:        LDAPasp_RFC451 test port functions group file
+//  Rev:                R4A
+//  Prodnr:             CNL 113 513
+//  Reference:          
+//
+//
+-->
+<!DOCTYPE TITAN_GUI_FileGroup_file>
+<FileGroup TITAN_version="2.2.pl0" >
+    <File_Group name="LDAPasp_RFC4511_CNL113513_Functions" >
+        <File path="LDAPasp_RFC4511_Types.ttcn" />
+        <File path="Lightweight_Directory_Access_Protocol.asn" />	
+    </File_Group>
+</FileGroup>

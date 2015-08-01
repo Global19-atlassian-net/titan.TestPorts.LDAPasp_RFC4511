@@ -1,0 +1,706 @@
+/******************************************************************************
+* Copyright (c) 2006, 2015  Ericsson AB
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+* Gergely Futo
+* Attila Balasko
+* Csaba Feher
+* Csaba Fehér
+* Gabor Szalai
+* Janos Kovesdi
+* Szabolcs Balazs Beres
+* Szabolcs Béres
+* Zoltan Medve
+******************************************************************************/
+//
+//  File:               LDIF_RFC4511.ttcn
+//  Description:        LDIF definition file
+//  Rev:                R4A
+//  Prodnr:             CNL 113 513
+//
+
+module LDIF_RFC4511
+{
+import from LDAPasp_RFC4511_PortType all;
+import from LDAPasp_RFC4511_Types all;
+import from Lightweight_Directory_Access_Protocol language "ASN.1:2002" all;
+
+import from TCCEncoding_Functions all;
+
+external function f_ImportLDIF(in charstring pl_file_name, in boolean pl_resolve_env) return LDIFData;
+
+//*****************************************************************************
+//Type definitions for the ImportLDIF external function
+//*****************************************************************************
+type record LDIFData{
+  integer  version optional,
+  LDIFStructureList  datalist
+}
+	
+type record of LDIFStructure LDIFStructureList;
+	
+type record LDIFStructure{
+  charstring  dn_string,
+  LDIFChoice  data
+}
+
+type union LDIFChoice{
+AttrValRecordList  content,
+ChangeRecord  change
+}
+
+type record of AttrValRecord AttrValRecordList;
+
+type record AttrValRecord{
+  charstring  attributetype,
+  OptionList  optionlist, //0 length if not present
+  ValueUnion  attributevalue optional
+}
+
+type record of charstring OptionList;
+
+type union ValueUnion{
+  charstring  safe_string, //universalchar
+  charstring  base64_string, 
+  charstring  url
+}
+
+type record ChangeRecord{
+  ControlList  controllist, //0 length if not present
+  ChangeType  changetype
+}
+
+type record of LDIFControl ControlList;
+
+type record LDIFControl{
+  charstring  ldapoid,
+  boolean  criticality optional,
+  octetstring  controlvalue optional
+}
+
+type union ChangeType{
+  AttrValRecordList  changeadd,
+  ChangeDelete  changedelete,
+  ChangeModifyDataList  changemodify,
+  ChangeModDn  changemoddn
+}
+
+type record of charstring ChangeDelete;
+
+type record of ChangeModifyData ChangeModifyDataList;
+
+type record ChangeModifyData{
+  charstring  operation,
+  AttrValRecordList  attrvalrecordlist 
+    //AttributeDescription is the 0th element
+    // with the value omited
+}
+
+type record ChangeModDn{
+  charstring  modtype,
+  charstring  newrdn,
+  boolean  deleteoldrdn,
+  NewSuperior  newsuperior optional
+}
+
+type union NewSuperior{
+  charstring  distinguished,
+  charstring  base64_distinguished
+}
+
+type enumerated EntryConversion
+{
+	NoConversion,
+	Entry2ModifyAdd,
+	Entry2ModifyReplace
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PopulateLDAPServer DepopulateLDAPServer functions
+////////////////////////////////////////////////////////////////////////////////
+
+function f_PopulateLDAPServer
+(
+	LDIFData pl_info, 
+	LDAPasp_RFC4511_PT pl_LDAP,
+	EntryConversion pl_conversion, 
+	boolean pl_continue,
+        integer pl_clientID
+)
+return boolean
+{
+  var integer LDIFcount := sizeof(pl_info.datalist);
+	//var integer attrtypeidx;
+	//var integer nextvalidx;
+  var ASP_LDAP_msg msg;
+	var boolean ret := true;
+  var template integer p_inClientID;
+
+  timer T2 := 10.0;
+  
+  if (pl_clientID >= 0){
+    msg.client_id := pl_clientID;
+    p_inClientID := pl_clientID;
+  }else{
+    msg.client_id := omit;
+    p_inClientID := ?
+  }
+  for(var integer i := 0; i < LDIFcount and (ret or pl_continue); i := i+1)
+  {
+    msg.data.messageID := i;
+
+    if(ischosen(pl_info.datalist[i].data.content))
+    {
+      if(pl_conversion == NoConversion)
+      {
+        msg.data.protocolOp.addRequest.entry := pl_info.datalist[i].dn_string;
+				msg.data.protocolOp.addRequest.attributes := {};
+        msg.data.controls := omit;
+	
+				f_LDAPConvertLDIFAttributes(pl_info.datalist[i].data.content,
+					msg.data.protocolOp.addRequest.attributes);
+
+        var ASP_LDAP_msg response;
+        pl_LDAP.send(msg);
+        T2.start;
+        alt 
+        {
+          [] pl_LDAP.receive(t_server_addresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.addResponse.resultCode == success)
+              {
+                log("Successfully added");
+              } 
+							else 
+							{
+                log("Error in adding: ",
+									response.data.protocolOp.addResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop;
+          	}
+          [] pl_LDAP.receive 
+							{ log("Other message received"); T2.stop; ret := false}
+          [] T2.timeout 
+							{ log("Timeout occured"); ret := false }
+        }
+      }	
+			else
+			{
+        msg.data.protocolOp.modifyRequest.object := pl_info.datalist[i].dn_string;
+        msg.data.protocolOp.modifyRequest.modification := {};
+        msg.data.controls := {};
+
+				if(pl_conversion == Entry2ModifyAdd) 
+				{
+					f_LDAPConvertLDIFModifications(
+						pl_info.datalist[i].data.content, 
+						msg.data.protocolOp.modifyRequest.modification,
+						addValue);
+				} 
+				else if(pl_conversion == Entry2ModifyReplace)
+				{
+					f_LDAPConvertLDIFModifications(
+						pl_info.datalist[i].data.content, 
+						msg.data.protocolOp.modifyRequest.modification,
+						replaceValue);
+				}
+
+        var ASP_LDAP_msg response;
+        pl_LDAP.send(msg);
+        T2.start;
+        alt 
+        {
+          [] pl_LDAP.receive(t_server_modifyresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.modifyResponse.resultCode == success)
+              {
+                log("Succesfully modified")
+              }
+							else
+							{
+                log("Error in modifying: ",
+									response.data.protocolOp.modifyResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop;
+            }
+          [] pl_LDAP.receive 
+							{ log("Other message received"); T2.stop; ret := false }
+          [] T2.timeout 
+							{ log("Timeout occured"); ret := false }
+        }
+      }
+    }
+		else if(ischosen(pl_info.datalist[i].data.change.changetype.changeadd))
+    {
+      msg.data.protocolOp.addRequest.entry := pl_info.datalist[i].dn_string;
+
+			f_LDAPConvertLDIFAttributes(
+				pl_info.datalist[i].data.change.changetype.changeadd,
+				msg.data.protocolOp.addRequest.attributes);
+			f_LDAPConvertLDIFControls(
+				pl_info.datalist[i].data.change.controllist,
+				msg.data.controls);
+
+      var ASP_LDAP_msg response;
+      pl_LDAP.send(msg);
+      T2.start;
+      alt 
+      {
+        [] pl_LDAP.receive(t_server_addresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.addResponse.resultCode == success)
+              {
+                log("Succesfully added")
+              }
+							else
+							{
+                log("Error in adding: ",
+									response.data.protocolOp.addResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop;
+            }
+        [] pl_LDAP.receive 
+						{ log("Other message received"); T2.stop; ret := false }
+        [] T2.timeout 
+						{ log("Timeout occured"); ret := false }
+      }
+    }
+		else if(ischosen(pl_info.datalist[i].data.change.changetype.changedelete))
+    {
+      msg.data.protocolOp.delRequest := pl_info.datalist[i].dn_string;
+
+			f_LDAPConvertLDIFControls(
+				pl_info.datalist[i].data.change.controllist,
+				msg.data.controls);
+
+      var ASP_LDAP_msg response;
+      pl_LDAP.send(msg);
+      T2.start;
+      alt 
+      {
+        [] pl_LDAP.receive(t_server_delresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.delResponse.resultCode == success)
+              {
+                log("Succesfully deleted")
+              }
+							else
+							{
+                log("Error in deleting: ",
+									response.data.protocolOp.delResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop
+            }
+        [] pl_LDAP.receive 
+						{ log("Other message received"); T2.stop; ret := false }
+        [] T2.timeout 
+						{ log("Timeout occured"); ret := false }
+      }
+    } 
+		else if(ischosen(pl_info.datalist[i].data.change.changetype.changemodify))
+    {
+      msg.data.protocolOp.modifyRequest.object := pl_info.datalist[i].dn_string;
+      msg.data.protocolOp.modifyRequest.modification := {};
+
+      var integer modificationcounter := 
+				sizeof(pl_info.datalist[i].data.change.changetype.changemodify);
+      for(var integer i2 := 0; i2 < modificationcounter; i2 := i2+1)
+      {
+        if(pl_info.datalist[i].data.change.changetype.changemodify[i2].operation == "add")
+        {
+          msg.data.protocolOp.modifyRequest.modification[i2].operation := addValue;
+        }
+				else if(pl_info.datalist[i].data.change.changetype.changemodify[i2].operation == "delete")
+        {
+          msg.data.protocolOp.modifyRequest.modification[i2].operation := 
+						deleteValue;
+        }
+				else if(pl_info.datalist[i].data.change.changetype.changemodify[i2].operation == "replace")
+        {
+          msg.data.protocolOp.modifyRequest.modification[i2].operation := 
+						replaceValue;
+        }
+
+        msg.data.protocolOp.modifyRequest.modification[i2].modification.typeField := pl_info.datalist[i].data.change.changetype.changemodify[i2].attrvalrecordlist[0].attributetype;
+
+        var integer optioncount := sizeof(pl_info.datalist[i].data.change.changetype.changemodify[i2].attrvalrecordlist[0].optionlist);
+        for(var integer i3 := 0; i3 < optioncount; i3 := i3+1)
+        {
+          msg.data.protocolOp.modifyRequest.modification[i2].modification.typeField := msg.data.protocolOp.modifyRequest.modification[i2].modification.typeField & ";" & pl_info.datalist[i].data.change.changetype.changemodify[i2].attrvalrecordlist[0].optionlist[i3];
+        }
+
+        var integer attributesize := sizeof(pl_info.datalist[i].data.change.changetype.changemodify[i2].attrvalrecordlist);
+        for(var integer i3 := 1 /* "0" is description*/; i3 < attributesize; i3:= i3+1)
+        {
+          msg.data.protocolOp.modifyRequest.modification[i2].modification.vals := {};
+          msg.data.protocolOp.modifyRequest.modification[i2].modification.vals[i3-1] := 
+            f_LDAP_value2oct(pl_info.datalist[i].data.change.changetype.changemodify[i2].attrvalrecordlist[i3].attributevalue);
+        }
+      }
+
+			f_LDAPConvertLDIFControls(
+				pl_info.datalist[i].data.change.controllist,
+				msg.data.controls);
+
+      var ASP_LDAP_msg response;
+      pl_LDAP.send(msg);
+      T2.start;
+      alt 
+      {
+        [] pl_LDAP.receive(t_server_modifyresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.modifyResponse.resultCode == success)
+              {
+                log("Succesfully modified")
+              }
+							else
+							{
+                log("Error in modifying: ",
+									response.data.protocolOp.modifyResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop;
+            }
+        [] pl_LDAP.receive 
+						{ log("Other message received"); T2.stop; ret := false }
+        [] T2.timeout 
+						{ log("Timeout occured"); ret := false }
+      }
+    }
+		else
+		{
+      msg.data.protocolOp.modDNRequest.entry := pl_info.datalist[i].dn_string;
+      msg.data.protocolOp.modDNRequest.newrdn := 
+				pl_info.datalist[i].data.change.changetype.changemoddn.newrdn;
+      msg.data.protocolOp.modDNRequest.deleteoldrdn := 
+				pl_info.datalist[i].data.change.changetype.changemoddn.deleteoldrdn;
+
+      if(not ispresent(pl_info.datalist[i].data.change.changetype.changemoddn.newsuperior))
+      {
+        msg.data.protocolOp.modDNRequest.newSuperior := omit;
+      }
+			else if(ischosen(pl_info.datalist[i].data.change.changetype.changemoddn.newsuperior.distinguished))
+      {
+        msg.data.protocolOp.modDNRequest.newSuperior := pl_info.datalist[i].data.change.changetype.changemoddn.newsuperior.distinguished;
+      }
+			else
+			{
+        msg.data.protocolOp.modDNRequest.newSuperior := pl_info.datalist[i].data.change.changetype.changemoddn.newsuperior.base64_distinguished;
+      }
+
+       f_LDAPConvertLDIFControls(
+	       pl_info.datalist[i].data.change.controllist,
+	       msg.data.controls);
+
+      var ASP_LDAP_msg response;
+      pl_LDAP.send(msg);
+      T2.start;
+      alt 
+      {
+        [] pl_LDAP.receive(t_server_moddnresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.modDNResponse.resultCode == success)
+              {
+                log("Succesfully moddned")
+              }
+							else
+							{
+                log("Error in moddN: ",
+									response.data.protocolOp.modDNResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop
+            }
+        [] pl_LDAP.receive 
+						{ log("Other message received"); T2.stop; ret := false }
+        [] T2.timeout 
+						{ log("Timeout occured"); ret := false }
+      }
+    }
+  }
+
+  timer T3 := 3.0;
+  T3.start;
+  T3.timeout;
+	return ret;
+}
+
+function f_DepopulateLDAPServer
+(
+	LDIFData pl_info, 
+	LDAPasp_RFC4511_PT pl_LDAP,
+	boolean pl_continue,
+        integer pl_clientID
+)
+return boolean
+{
+  var integer LDIFcount := sizeof(pl_info.datalist);
+  var ASP_LDAP_msg msg;
+	var boolean ret := true;
+  var template integer p_inClientID;
+
+  timer T2 := 10.0;
+
+  if (pl_clientID >= 0){
+    msg.client_id := pl_clientID;
+    p_inClientID := pl_clientID;
+  }else{
+    msg.client_id := omit;
+    p_inClientID := ?;
+  }
+  for(var integer i := LDIFcount-1; i >= 0 and (ret or pl_continue); i := i-1)
+  {
+    msg.data.messageID := i;
+    msg.data.controls:= {};
+
+    if(ischosen(pl_info.datalist[i].data.content))
+    {
+      msg.data.protocolOp.delRequest := pl_info.datalist[i].dn_string;
+
+      var ASP_LDAP_msg response;
+      pl_LDAP.send(msg);
+  		T2.start;
+      alt 
+      {
+        [] pl_LDAP.receive(t_server_delresponse(p_inClientID)) -> value response
+            {
+              if(response.data.protocolOp.delResponse.resultCode == success)
+              {
+                log("Succesfully deleted")
+              } 
+							else 
+							{
+                log("Error in deleting: ",
+									response.data.protocolOp.delResponse.diagnosticMessage);
+								ret := false;
+              }
+							T2.stop
+            }
+        [] pl_LDAP.receive 
+						{ log("Other message received"); T2.stop; ret := false }
+        [] T2.timeout 
+						{ log("Timeout occured"); ret := false }
+      }    
+    }
+  }
+
+  timer T3 := 3.0;
+  T3.start;
+  T3.timeout;
+	return ret;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// templates to check the received value in the PopulateLDAPServer / DepopulateLDAPServer functions
+///////////////////////////////////////////////////////////////////////////////////
+
+template ASP_LDAP_msg t_server_delresponse(template integer pl_clientID) :=
+{
+   client_id := pl_clientID,
+   data := {
+      messageID := ?,
+      protocolOp := 
+      {
+        delResponse := 
+        {
+          resultCode := ?,
+          matchedDN := ?,
+            diagnosticMessage:= ?,
+          referral := *
+        }
+      },
+      controls := *
+    }
+}
+
+template ASP_LDAP_msg t_server_addresponse(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+      protocolOp:=
+      {
+      addResponse :=
+      {
+        resultCode := ?,
+          matchedDN := ?,
+          diagnosticMessage:= ?,
+          referral := *
+      }
+    },
+    controls := *
+  }
+}
+
+template ASP_LDAP_msg t_server_modifyresponse(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:=
+    {
+      modifyResponse :=
+      {
+        resultCode := ?,
+        matchedDN := ?,
+        diagnosticMessage:= ?,
+        referral := *
+      }
+    },
+    controls := *
+  }
+}
+
+template ASP_LDAP_msg t_server_moddnresponse(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:=
+    {
+      modDNResponse :=
+      {
+        resultCode := ?,
+        matchedDN := ?,
+        diagnosticMessage:= ?,
+        referral := *
+      }
+    },
+    controls := *
+  }
+}
+
+function f_LDAPConvertLDIFModifications
+(
+	inout AttrValRecordList pl_from,
+	inout ModificationList pl_to,
+	in ModificationOperation pl_modop
+)
+{
+	var integer attrtypeidx, nextvalidx;
+  for(var integer i2 := 0; i2 < sizeof(pl_from); i2 := i2+1)
+  {
+		attrtypeidx := -1;
+		for(var integer j := sizeof(pl_to)-1; j >= 0 and attrtypeidx == -1; 
+			j := j-1) 
+		{
+			if(pl_to[j].modification.typeField == pl_from[i2].attributetype) 
+			{
+				attrtypeidx := j;
+			}
+		}
+		if(attrtypeidx == -1)
+		{
+			attrtypeidx := sizeof(pl_to);
+			pl_to[attrtypeidx].modification.vals := {};
+			pl_to[attrtypeidx].modification.typeField := pl_from[i2].attributetype;
+		}
+    pl_to[attrtypeidx].operation := pl_modop;   
+
+    for(var integer i3 := 0; i3 < sizeof(pl_from[i2].optionlist); i3 := i3+1)
+    {
+      pl_to[attrtypeidx].modification.typeField := 
+				pl_to[attrtypeidx].modification.typeField 
+				& ";" & pl_from[i2].optionlist[i3];
+    }
+
+    nextvalidx := sizeof(pl_to[attrtypeidx].modification.vals);
+    pl_to[attrtypeidx].modification.vals[nextvalidx] := 
+      f_LDAP_value2oct(pl_from[i2].attributevalue);
+  }
+}
+
+function f_LDAPConvertLDIFAttributes
+(
+	inout AttrValRecordList pl_from, 
+	inout AttributeList pl_to
+)
+{
+	var integer attrtypeidx, nextvalidx;
+	pl_to := {};
+	for(var integer i2 := 0; i2 < sizeof(pl_from); i2 := i2+1)
+	{
+		attrtypeidx := f_LDAPFindAttribute(pl_to, pl_from[i2].attributetype);
+		if(attrtypeidx == -1)
+		{
+			attrtypeidx := sizeof(pl_to);
+			pl_to[attrtypeidx].vals := {};
+			pl_to[attrtypeidx].typeField := pl_from[i2].attributetype;
+		}
+	
+		for(var integer i3 := 0; i3 < sizeof(pl_from[i2].optionlist); i3 := i3+1)
+		{
+			pl_to[attrtypeidx].typeField := pl_to[attrtypeidx].typeField 
+				& ";" & pl_from[i2].optionlist[i3];
+		}
+
+		nextvalidx := sizeof(pl_to[attrtypeidx].vals);
+                pl_to[attrtypeidx].vals[nextvalidx] := f_LDAP_value2oct(pl_from[i2].attributevalue)
+	}
+}
+
+function f_LDAPConvertLDIFControls
+(
+	inout ControlList pl_from, 
+	inout Controls pl_to
+)
+{
+  pl_to := {};
+  for(var integer i2 := 0; i2 < sizeof(pl_from); i2 := i2+1)
+  {
+    pl_to[i2].controlType := pl_from[i2].ldapoid;
+    if(ispresent(pl_from[i2].criticality))
+    {
+      pl_to[i2].criticality := pl_from[i2].criticality;
+    } 
+		else 
+		{
+      pl_to[i2].criticality := false;
+    }
+
+    pl_to[i2].controlValue := pl_from[i2].controlvalue;
+  }
+}
+
+function f_LDAPFindAttribute
+(
+	inout AttributeList pl_where, 
+	inout charstring pl_what
+)
+return integer
+{
+	for(var integer j := sizeof(pl_where)-1; j >= 0; j := j-1) 
+	{
+		if(pl_where[j].typeField == pl_what) 
+		{
+			return j;
+		}
+	}
+	return -1;
+}
+
+function f_LDAP_value2oct(in ValueUnion pl_val) return octetstring
+{
+  if (ischosen(pl_val.safe_string))
+  {
+    return char2oct(pl_val.safe_string);
+  }else if (ischosen(pl_val.url))
+  {
+    return char2oct(pl_val.url)
+  }else if (ischosen(pl_val.base64_string))
+  {
+    return dec_LDIF_Base64(pl_val.base64_string);
+  }else{
+    log("WARNING: unknow value ", pl_val);
+    return ''O;
+  }
+}
+}

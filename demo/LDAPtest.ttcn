@@ -1,0 +1,225 @@
+/******************************************************************************
+* Copyright (c) 2006, 2015  Ericsson AB
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+* Gergely Futo
+* Attila Balasko
+* Csaba Feher
+* Csaba Fehér
+* Gabor Szalai
+* Janos Kovesdi
+* Szabolcs Balazs Beres
+* Szabolcs Béres
+* Zoltan Medve
+******************************************************************************/
+//
+//  File:               LDAPtest.ttcn
+//  Description:        LDIF test file
+//  Rev:                R4A
+//  Prodnr:             CNL 113 513
+//
+
+module LDAPtest {
+
+import from LDAPasp_RFC4511_PortType all;
+import from LDAPasp_RFC4511_Types all;
+import from Lightweight_Directory_Access_Protocol language "ASN.1:2001" all;
+import from LDIF_RFC4511 all;
+
+modulepar charstring tsp_LDAP_LDIFFile := "test1.ldif";
+
+type component LDAPcomp_CT {
+  port LDAPasp_RFC4511_PT LDAP_PCO;
+}
+
+
+template ASP_LDAP_msg tr_addRequest(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:={
+      addRequest := ?
+    },
+    controls := *
+  }
+}
+
+template ASP_LDAP_msg tr_modifyRequest(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:={
+      modifyRequest := ?
+    },
+    controls := *
+  }
+}
+
+template ASP_LDAP_msg tr_delRequest(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:={
+      delRequest := ?
+    },
+    controls := *
+  }
+}
+
+template ASP_LDAP_msg tr_modDNRequest(template integer pl_clientID) :=
+{
+  client_id := pl_clientID,
+  data := {
+    messageID := ?,
+    protocolOp:={
+      modDNRequest := ?
+    },
+    controls := *
+  }
+}
+
+testcase tc1() runs on LDAPcomp_CT {
+
+  map(system:LDAP_PCO, self:LDAP_PCO);
+
+  var LDIFData information;
+  var ASP_LDAP_connect_result l_connectres;
+  var integer l_clientID;
+  information := f_ImportLDIF(tsp_LDAP_LDIFFile,false);
+  log(information);
+  timer T:= 10.0;
+  
+  LDAP_PCO.send(ASP_LDAP_connect:{"rhea", 5019, omit, omit});
+  T.start;
+  
+  alt{
+      [] LDAP_PCO.receive(ASP_LDAP_connect_result: ?) -> value l_connectres{
+          l_clientID := l_connectres.client_id;
+      }
+  }
+  f_PopulateLDAPServer(information,LDAP_PCO, NoConversion, true, l_clientID);
+
+
+  setverdict(pass);
+
+  unmap(system:LDAP_PCO, self:LDAP_PCO);
+}
+
+testcase tc2() runs on LDAPcomp_CT {
+  var ASP_LDAP_msg mess;
+  template LDAPMessage t_addrequest :=
+  {
+    messageID := ?,
+      protocolOp :=
+      {
+      addRequest := 
+      {
+        entry := ?,
+          attributes := ?
+      }
+    },
+    controls := *
+  };
+  var ASP_LDAP_msg receivedmessage;
+  var ASP_LDAP_msg sendmessage;
+
+  var LDAPMessage addresponse:=
+    {
+    messageID := 0,
+    protocolOp := 
+    {
+      addResponse := 
+      {
+        resultCode := success,
+          matchedDN := "",
+          diagnosticMessage := "",
+          referral := omit
+      }
+    }
+  }
+
+  map (system:LDAP_PCO, self:LDAP_PCO);
+
+  timer T1 := 60.0;
+  T1.start;
+
+  var integer msg_counter := 0;
+
+  alt {
+    [] LDAP_PCO.receive(tr_addRequest(?)) -> value receivedmessage
+    {
+      sendmessage.client_id := receivedmessage.client_id;
+      
+      sendmessage.data.messageID := receivedmessage.data.messageID;
+      sendmessage.data.protocolOp.addResponse.resultCode := success;
+      sendmessage.data.protocolOp.addResponse.matchedDN := receivedmessage.data.protocolOp.addRequest.entry;
+      sendmessage.data.protocolOp.addResponse.diagnosticMessage := "";
+      sendmessage.data.protocolOp.addResponse.referral := omit;
+      sendmessage.data.controls := receivedmessage.data.controls;
+
+      LDAP_PCO.send(sendmessage);
+      msg_counter := msg_counter + 1;
+      repeat;
+    }
+    [] LDAP_PCO.receive(tr_modifyRequest(?)) -> value receivedmessage
+    {
+      sendmessage.client_id := receivedmessage.client_id;
+      
+      sendmessage.data.messageID := receivedmessage.data.messageID;
+      sendmessage.data.protocolOp.modifyResponse.resultCode := success;
+      sendmessage.data.protocolOp.modifyResponse.matchedDN := receivedmessage.data.protocolOp.modifyRequest.object;
+      sendmessage.data.protocolOp.modifyResponse.diagnosticMessage := "";
+      sendmessage.data.protocolOp.modifyResponse.referral := omit;
+      sendmessage.data.controls := receivedmessage.data.controls;
+
+      LDAP_PCO.send(sendmessage);
+      msg_counter := msg_counter + 1;
+      repeat;
+    }
+    [] LDAP_PCO.receive(tr_delRequest(?)) -> value receivedmessage
+    {
+      sendmessage.client_id := receivedmessage.client_id;
+      
+      sendmessage.data.messageID := receivedmessage.data.messageID;
+      sendmessage.data.protocolOp.delResponse.resultCode := success;
+      sendmessage.data.protocolOp.delResponse.matchedDN := receivedmessage.data.protocolOp.delRequest;
+      sendmessage.data.protocolOp.delResponse.diagnosticMessage := "";
+      sendmessage.data.protocolOp.delResponse.referral := omit;
+      sendmessage.data.controls := receivedmessage.data.controls;
+
+      LDAP_PCO.send(sendmessage);
+      msg_counter := msg_counter + 1;
+      repeat;
+    }
+    [] LDAP_PCO.receive(tr_modDNRequest(?)) -> value receivedmessage
+    {
+      
+      sendmessage.data.messageID := receivedmessage.data.messageID;
+      sendmessage.data.protocolOp.modDNResponse.resultCode := success;
+      sendmessage.data.protocolOp.modDNResponse.matchedDN := receivedmessage.data.protocolOp.modDNRequest.entry;
+      sendmessage.data.protocolOp.modDNResponse.diagnosticMessage := "";
+      sendmessage.data.protocolOp.modDNResponse.referral := omit;
+      sendmessage.data.controls := receivedmessage.data.controls;
+
+      LDAP_PCO.send(sendmessage);
+      msg_counter := msg_counter + 1;
+      repeat;
+    }
+    [] T1.timeout {}
+  }
+
+  log ("msg counter: ", msg_counter);
+
+  setverdict(pass);
+
+  unmap (system:LDAP_PCO, self:LDAP_PCO);
+}
+
+}

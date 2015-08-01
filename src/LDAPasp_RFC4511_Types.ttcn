@@ -1,0 +1,83 @@
+/******************************************************************************
+* Copyright (c) 2006, 2015  Ericsson AB
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+* Gergely Futo
+* Attila Balasko
+* Csaba Feher
+* Csaba Fehér
+* Gabor Szalai
+* Janos Kovesdi
+* Szabolcs Balazs Beres
+* Szabolcs Béres
+* Zoltan Medve
+******************************************************************************/
+//
+//  File:               LDAPasp_RFC4511_Types.ttcn
+//  Description:        LDAP_RFC4511 testport type definition file
+//  Rev:                R4A
+//  Prodnr:             CNL 113 513
+//
+
+
+module LDAPasp_RFC4511_Types
+{
+
+import from Lightweight_Directory_Access_Protocol  language "ASN.1:2002" all;
+
+external function enc_LDAPMessage(in LDAPMessage pl_message) return octetstring
+with { extension "prototype(convert) encode(BER:BER_ENCODE_DER)" }
+
+external function dec_LDAPMessage(in octetstring pl_stream) return LDAPMessage
+with { extension "prototype(convert) decode(BER:BER_ACCEPT_ALL)" }
+
+
+//*****************************************************************************
+//Type definitions
+//*****************************************************************************
+
+type record ASP_LDAP_msg {
+   integer client_id optional,
+   LDAPMessage data
+}
+
+type record ASP_LDAP_closed{
+    integer client_id
+}
+
+type record ASP_LDAP_connected{
+    integer client_id,
+    charstring client_address,
+    integer portnumber
+}
+
+type record ASP_LDAP_connect {
+  charstring hostname,
+  integer portnumber,
+  charstring local_hostname optional,
+  integer local_portnumber  optional
+}
+
+type record ASP_LDAP_connect_result{
+    integer client_id
+}
+
+type record ASP_LDAP_listen_result{
+    integer portnumber
+}
+
+type record ASP_LDAP_listen {
+  integer portnumber        optional,
+  charstring local_hostname optional
+}
+
+type record ASP_LDAP_close{
+    integer client_id optional
+}
+
+type record ASP_LDAP_shutdown {}
+}

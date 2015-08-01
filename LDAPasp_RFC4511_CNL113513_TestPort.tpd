@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ Copyright (c) 2015 Ericsson
+
+  The copyright to the computer  program(s) herein  is the property of Ericsson.
+  The program(s) may be used and/or copied only with the written permission
+  of Ericsson or in accordance with  the terms and conditions  stipulated in the
+  agreement/contract under which the program(s) has been supplied.
+
+
+   File:               LDAPasp_RFC4511_CNL113513_TestPort.tpd
+   Description:        tpd project file
+   Rev:                R4A
+   Prodnr:             CNL 113 513
+
+ -->
+<TITAN_Project_File_Information version="1.0">
+  <ProjectName>LDAPasp_RFC4511_CNL113513_TestPort</ProjectName>
+  <ReferencedProjects>
+    <ReferencedProject name="Abstract_Socket_CNL113384" projectLocationURI="../Common_Components/Abstract_Socket_CNL113384/Abstract_Socket_CNL113384.tpd"/>
+    <ReferencedProject name="TCCUsefulFunctions_CNL113472_Common" projectLocationURI="../../Libraries/TCCUsefulFunctions_CNL113472/TCCUsefulFunctions_CNL113472_Common.tpd"/>
+    <ReferencedProject name="LDAPasp_RFC4511_CNL113513_Functions" projectLocationURI="LDAPasp_RFC4511_CNL113513_Functions.tpd"/>
+  </ReferencedProjects>
+  <Files>
+    <FileResource projectRelativePath="LDAPasp_RFC4511_PT.cc" relativeURI="src/LDAPasp_RFC4511_PT.cc"/>
+    <FileResource projectRelativePath="LDAPasp_RFC4511_PT.hh" relativeURI="src/LDAPasp_RFC4511_PT.hh"/>
+    <FileResource projectRelativePath="LDAPasp_RFC4511_PortType.ttcn" relativeURI="src/LDAPasp_RFC4511_PortType.ttcn"/>
+    <FileResource projectRelativePath="LDIF_RFC4511.ttcn" relativeURI="src/LDIF_RFC4511.ttcn"/>
+    <FileResource projectRelativePath="ldif.lex" relativeURI="src/ldif.lex"/>
+    <FileResource projectRelativePath="ldif.tab.cc" relativeURI="src/ldif.tab.cc"/>
+    <FileResource projectRelativePath="ldif.tab.hh" relativeURI="src/ldif.tab.hh"/>
+    <FileResource projectRelativePath="ldif.y" relativeURI="src/ldif.y"/>
+    <FileResource projectRelativePath="lex.ldif.cc" relativeURI="src/lex.ldif.cc"/>
+  </Files>
+  <ActiveConfiguration>Default</ActiveConfiguration>
+  <Configurations>
+    <Configuration name="Default">
+      <ProjectProperties>
+        <MakefileSettings>
+          <generateInternalMakefile>true</generateInternalMakefile>
+          <GNUMake>true</GNUMake>
+          <incrementalDependencyRefresh>true</incrementalDependencyRefresh>
+          <targetExecutable>bin/LDAPasp_RFC4511_CNL113513_TestPort</targetExecutable>
+          <buildLevel>Level 3 - Creating object files with dependency update</buildLevel>
+        </MakefileSettings>
+        <LocalBuildSettings>
+          <workingDirectory>bin</workingDirectory>
+        </LocalBuildSettings>
+      </ProjectProperties>
+    </Configuration>
+  </Configurations>
+</TITAN_Project_File_Information>
